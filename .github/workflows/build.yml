@@ -1,0 +1,46 @@
+name: Build WSL2 Kernel
+
+on:
+  push:
+    branches: [ "linux-msft-wsl-6.18.y" ]
+  pull_request:
+    branches: [ "linux-msft-wsl-6.18.y" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential flex bison dwarves libssl-dev libelf-dev cpio qemu-utils
+
+    - name: Build kernel and install modules
+      run: |
+        make -j"$(nproc)" KCONFIG_CONFIG=Microsoft/config-wsl
+        make INSTALL_MOD_PATH="$PWD/modules" modules_install
+
+    - name: Create modules VHDX
+      run: |
+        sudo ./Microsoft/scripts/gen_modules_vhdx.sh "$PWD/modules" "$(make -s kernelrelease)" modules.vhdx
+
+    - name: Write build metadata
+      run: |
+        make -s kernelrelease > kernelrelease.txt
+        cp Microsoft/config-wsl config-wsl
+
+    - name: Upload WSL2 kernel package
+      uses: actions/upload-artifact@v4
+      with:
+        name: wsl2-kernel
+        if-no-files-found: error
+        path: |
+          arch/x86/boot/bzImage
+          modules.vhdx
+          System.map
+          config-wsl
+          kernelrelease.txt
